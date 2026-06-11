@@ -264,7 +264,7 @@ class MonitorSensor(SensorEntity):
     _attr_entity_registry_enabled_default = False
     _attr_has_entity_name = True
     _attr_should_poll = False
-    _attr_suggested_display_precision = 0
+    _attr_suggested_display_precision = 2
 
     def __init__(
         self,
@@ -416,7 +416,6 @@ class EnergySensor(MonitorSensor):
             "energy" if not sensor.is_aux else "aux_energy",
             sensor,
             sensor.number,
-            update_interval=DEFAULT_UPDATE_INTERVAL,
         )
         self._sensor: greeneye.monitor.Channel = self._sensor
         self._net_metering = net_metering

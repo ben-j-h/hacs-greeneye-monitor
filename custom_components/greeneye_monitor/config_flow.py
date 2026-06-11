@@ -227,7 +227,7 @@ class GreeneyeMonitorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         config_entry: config_entries.ConfigEntry,
     ) -> config_entries.OptionsFlow:
         """Create the options flow."""
-        return GreeneyeMonitorOptionsFlow(config_entry)
+        return GreeneyeMonitorOptionsFlow()
 
     async def async_step_import(
         self, discovery_info: DiscoveryInfoType
@@ -466,9 +466,8 @@ def yaml_to_config_entry(
 
 
 class GreeneyeMonitorOptionsFlow(config_entries.OptionsFlow):
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+    def __init__(self) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
