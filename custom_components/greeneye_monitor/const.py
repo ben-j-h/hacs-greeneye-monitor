@@ -28,6 +28,7 @@ CONF_VOLTAGE_SENSORS = "voltage"
 CONFIG_ENTRY_TITLE = "GreenEye Monitor (GEM)"
 
 DEFAULT_UPDATE_INTERVAL = timedelta(minutes=5)
+MEASUREMENT_UPDATE_INTERVAL = timedelta(seconds=30)
 DEVICE_TYPE_AUX = "aux"
 DEVICE_TYPE_CURRENT_TRANSFORMER = "channel"
 DEVICE_TYPE_PULSE_COUNTER = "pulse counter"

@@ -474,7 +474,7 @@ class GreeneyeMonitorOptionsFlow(config_entries.OptionsFlow):
     ) -> data_entry_flow.FlowResult:
         """Manage the options."""
         return self.async_show_menu(
-            step_id="options_menu",
+            step_id="init",
             menu_options=["global_options", "choose_monitor"],
         )
 

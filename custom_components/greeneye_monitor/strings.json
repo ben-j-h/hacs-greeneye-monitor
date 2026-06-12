@@ -42,7 +42,7 @@
   },
   "options": {
     "step": {
-      "options_menu": {
+      "init": {
         "title": "Choose options to edit",
         "menu_options": {
           "global_options": "Edit global options",

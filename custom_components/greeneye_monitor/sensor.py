@@ -40,6 +40,7 @@ from .const import CONF_PULSE_COUNTERS
 from .const import CONF_SERIAL_NUMBER
 from .const import CONF_TIME_UNIT
 from .const import DEFAULT_UPDATE_INTERVAL
+from .const import MEASUREMENT_UPDATE_INTERVAL
 from .const import DEVICE_TYPE_AUX
 from .const import DEVICE_TYPE_CURRENT_TRANSFORMER
 from .const import DEVICE_TYPE_PULSE_COUNTER
@@ -350,6 +351,7 @@ class PowerSensor(MonitorSensor):
             "current" if not sensor.is_aux else "aux_current",
             sensor,
             sensor.number,
+            update_interval=MEASUREMENT_UPDATE_INTERVAL,
         )
         self._sensor: greeneye.monitor.Channel = self._sensor
         self._net_metering = net_metering
@@ -384,7 +386,8 @@ class CurrentSensor(MonitorSensor):
     ) -> None:
         """Construct the entity."""
         super().__init__(
-            monitor, DEVICE_TYPE_CURRENT_TRANSFORMER, "amps", sensor, sensor.number
+            monitor, DEVICE_TYPE_CURRENT_TRANSFORMER, "amps", sensor, sensor.number,
+            update_interval=MEASUREMENT_UPDATE_INTERVAL,
         )
         self._sensor: greeneye.monitor.Channel = self._sensor
 
