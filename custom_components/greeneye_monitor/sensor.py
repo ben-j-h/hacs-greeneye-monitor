@@ -416,6 +416,7 @@ class EnergySensor(MonitorSensor):
             "energy" if not sensor.is_aux else "aux_energy",
             sensor,
             sensor.number,
+            update_interval=DEFAULT_UPDATE_INTERVAL,
         )
         self._sensor: greeneye.monitor.Channel = self._sensor
         self._net_metering = net_metering
