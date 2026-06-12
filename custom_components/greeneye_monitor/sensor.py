@@ -30,6 +30,7 @@ from homeassistant.util import Throttle
 
 from .const import AUX5_TYPE_PULSE_COUNTER
 from .const import CONF_AUX5_TYPE
+from .const import CONF_ENABLE_CURRENT
 from .const import CONF_COUNTED_QUANTITY
 from .const import CONF_COUNTED_QUANTITY_PER_PULSE
 from .const import CONF_DEVICE_CLASS
@@ -103,6 +104,7 @@ async def async_setup_entry(
             )
 
             net_metering = set(monitor_config[CONF_NET_METERING])
+            enable_current = config_entry.options.get(CONF_ENABLE_CURRENT, True)
             for channel in monitor.channels:
                 channel_net_metered = str(channel.number) in net_metering
                 entities.append(
@@ -112,12 +114,13 @@ async def async_setup_entry(
                         channel_net_metered,
                     )
                 )
-                entities.append(
-                    CurrentSensor(
-                        monitor,
-                        channel,
+                if enable_current:
+                    entities.append(
+                        CurrentSensor(
+                            monitor,
+                            channel,
+                        )
                     )
-                )
                 entities.append(
                     EnergySensor(
                         monitor,

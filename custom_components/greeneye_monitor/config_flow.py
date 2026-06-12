@@ -37,6 +37,7 @@ from .const import CONF_MONITORS
 from .const import CONF_NET_METERING
 from .const import CONF_NUMBER
 from .const import CONF_PULSE_COUNTERS
+from .const import CONF_ENABLE_CURRENT
 from .const import CONF_SEND_PACKET_DELAY
 from .const import CONF_SERIAL_NUMBER
 from .const import CONF_TEMPERATURE_SENSORS
@@ -199,10 +200,11 @@ MONITOR_OPTIONS_SCHEMA = vol.Schema(
 MONITORS_OPTIONS_SCHEMA = vol.All(cv.ensure_list, [MONITOR_OPTIONS_SCHEMA])
 
 
-def make_global_options_schema(send_packet_delay: bool = False):
+def make_global_options_schema(send_packet_delay: bool = False, enable_current: bool = True):
     return vol.Schema(
         {
             vol.Optional(CONF_SEND_PACKET_DELAY, default=send_packet_delay): bool,
+            vol.Optional(CONF_ENABLE_CURRENT, default=enable_current): bool,
         }
     )
 
@@ -473,8 +475,13 @@ class GreeneyeMonitorOptionsFlow(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> data_entry_flow.FlowResult:
         """Manage the options."""
+        return await self.async_step_options_menu()
+
+    async def async_step_options_menu(
+        self, user_input: dict[str, Any] | None = None
+    ) -> data_entry_flow.FlowResult:
         return self.async_show_menu(
-            step_id="init",
+            step_id="options_menu",
             menu_options=["global_options", "choose_monitor"],
         )
 
@@ -484,12 +491,14 @@ class GreeneyeMonitorOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             options = deepcopy(dict(self.config_entry.options))
             options[CONF_SEND_PACKET_DELAY] = user_input[CONF_SEND_PACKET_DELAY]
+            options[CONF_ENABLE_CURRENT] = user_input[CONF_ENABLE_CURRENT]
             return self.async_create_entry(title="", data=options)
 
         return self.async_show_form(
             step_id="global_options",
             data_schema=make_global_options_schema(
-                send_packet_delay=self.config_entry.options[CONF_SEND_PACKET_DELAY]
+                send_packet_delay=self.config_entry.options[CONF_SEND_PACKET_DELAY],
+                enable_current=self.config_entry.options.get(CONF_ENABLE_CURRENT, True),
             ),
         )
 

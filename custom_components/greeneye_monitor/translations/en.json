@@ -42,7 +42,7 @@
   },
   "options": {
     "step": {
-      "init": {
+      "options_menu": {
         "title": "Choose options to edit",
         "menu_options": {
           "global_options": "Edit global options",
@@ -52,10 +52,12 @@
       "global_options": {
         "title": "Global options",
         "data": {
-          "send_packet_delay": "Request packet delay for GEM API calls"
+          "send_packet_delay": "Request packet delay for GEM API calls",
+          "enable_current": "Enable current (amps) sensors"
         },
         "data_description": {
-          "send_packet_delay": "Experimental. Leave it False unless a @jkeljo has told you to set it to True."
+          "send_packet_delay": "Experimental. Leave it False unless a @jkeljo has told you to set it to True.",
+          "enable_current": "Create per-channel current sensors. Disable to reduce state machine and recorder load."
         }
       },
       "choose_monitor": {
