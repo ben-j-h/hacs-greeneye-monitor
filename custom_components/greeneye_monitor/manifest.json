@@ -1,14 +1,14 @@
 {
   "domain": "greeneye_monitor",
   "name": "GreenEye Monitor (GEM)",
-  "codeowners": ["@jkeljo"],
+  "codeowners": ["@ben-j-h"],
   "config_flow": true,
   "dependencies": ["logbook"],
-  "documentation": "https://github.com/jkeljo/hacs-greeneye-monitor",
+  "documentation": "https://github.com/ben-j-h/hacs-greeneye-monitor",
   "integration_type": "hub",
   "iot_class": "local_push",
-  "issue_tracker": "https://github.com/jkeljo/hacs-greeneye-monitor/issues",
+  "issue_tracker": "https://github.com/ben-j-h/hacs-greeneye-monitor/issues",
   "loggers": ["greeneye"],
   "requirements": ["greeneye_monitor==5.0.2"],
-  "version": "2024.2.19"
+  "version": "2026.6.11"
 }
