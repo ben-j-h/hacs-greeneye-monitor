@@ -40,8 +40,10 @@ from .const import CONF_NUMBER
 from .const import CONF_PULSE_COUNTERS
 from .const import CONF_SERIAL_NUMBER
 from .const import CONF_TIME_UNIT
-from .const import DEFAULT_UPDATE_INTERVAL
-from .const import MEASUREMENT_UPDATE_INTERVAL
+from .const import CONF_ENERGY_UPDATE_INTERVAL
+from .const import CONF_MEASUREMENT_UPDATE_INTERVAL
+from .const import DEFAULT_ENERGY_UPDATE_INTERVAL_SECONDS
+from .const import DEFAULT_MEASUREMENT_UPDATE_INTERVAL_SECONDS
 from .const import DEVICE_TYPE_AUX
 from .const import DEVICE_TYPE_CURRENT_TRANSFORMER
 from .const import DEVICE_TYPE_PULSE_COUNTER
@@ -105,6 +107,12 @@ async def async_setup_entry(
 
             net_metering = set(monitor_config[CONF_NET_METERING])
             enable_current = config_entry.options.get(CONF_ENABLE_CURRENT, True)
+            energy_interval = timedelta(seconds=config_entry.options.get(
+                CONF_ENERGY_UPDATE_INTERVAL, DEFAULT_ENERGY_UPDATE_INTERVAL_SECONDS
+            ))
+            measurement_interval = timedelta(seconds=config_entry.options.get(
+                CONF_MEASUREMENT_UPDATE_INTERVAL, DEFAULT_MEASUREMENT_UPDATE_INTERVAL_SECONDS
+            ))
             for channel in monitor.channels:
                 channel_net_metered = str(channel.number) in net_metering
                 entities.append(
@@ -112,6 +120,7 @@ async def async_setup_entry(
                         monitor,
                         channel,
                         channel_net_metered,
+                        measurement_interval,
                     )
                 )
                 if enable_current:
@@ -119,6 +128,7 @@ async def async_setup_entry(
                         CurrentSensor(
                             monitor,
                             channel,
+                            measurement_interval,
                         )
                     )
                 entities.append(
@@ -126,6 +136,7 @@ async def async_setup_entry(
                         monitor,
                         channel,
                         channel_net_metered,
+                        energy_interval,
                     )
                 )
 
@@ -163,6 +174,7 @@ async def async_setup_entry(
                             config[CONF_DEVICE_CLASS],
                             config[CONF_COUNTED_QUANTITY],
                             config[CONF_COUNTED_QUANTITY_PER_PULSE],
+                            energy_interval,
                         )
                     )
 
@@ -346,6 +358,7 @@ class PowerSensor(MonitorSensor):
         monitor: greeneye.monitor.Monitor,
         sensor: greeneye.monitor.Channel,
         net_metering: bool,
+        update_interval: timedelta | None = None,
     ) -> None:
         """Construct the entity."""
         super().__init__(
@@ -354,7 +367,7 @@ class PowerSensor(MonitorSensor):
             "current" if not sensor.is_aux else "aux_current",
             sensor,
             sensor.number,
-            update_interval=MEASUREMENT_UPDATE_INTERVAL,
+            update_interval=update_interval,
         )
         self._sensor: greeneye.monitor.Channel = self._sensor
         self._net_metering = net_metering
@@ -386,11 +399,12 @@ class CurrentSensor(MonitorSensor):
         self,
         monitor: greeneye.monitor.Monitor,
         sensor: greeneye.monitor.Channel,
+        update_interval: timedelta | None = None,
     ) -> None:
         """Construct the entity."""
         super().__init__(
             monitor, DEVICE_TYPE_CURRENT_TRANSFORMER, "amps", sensor, sensor.number,
-            update_interval=MEASUREMENT_UPDATE_INTERVAL,
+            update_interval=update_interval,
         )
         self._sensor: greeneye.monitor.Channel = self._sensor
 
@@ -414,6 +428,7 @@ class EnergySensor(MonitorSensor):
         monitor: greeneye.monitor.Monitor,
         sensor: greeneye.monitor.Channel,
         net_metering: bool,
+        update_interval: timedelta | None = None,
     ) -> None:
         """Construct the entity."""
         super().__init__(
@@ -422,7 +437,7 @@ class EnergySensor(MonitorSensor):
             "energy" if not sensor.is_aux else "aux_energy",
             sensor,
             sensor.number,
-            update_interval=DEFAULT_UPDATE_INTERVAL,
+            update_interval=update_interval,
         )
         self._sensor: greeneye.monitor.Channel = self._sensor
         self._net_metering = net_metering
@@ -513,6 +528,7 @@ class PulseCountSensor(MonitorSensor):
         device_class: SensorDeviceClass | None,
         counted_quantity: str,
         counted_quantity_per_pulse: float,
+        update_interval: timedelta | None = None,
     ) -> None:
         """Construct the entity."""
         super().__init__(
@@ -521,7 +537,7 @@ class PulseCountSensor(MonitorSensor):
             "count" if not sensor.is_aux else "aux_count",
             sensor,
             sensor.number,
-            update_interval=DEFAULT_UPDATE_INTERVAL,
+            update_interval=update_interval,
         )
         self._sensor: greeneye.monitor.PulseCounter = self._sensor
         self._counted_quantity_per_pulse = counted_quantity_per_pulse

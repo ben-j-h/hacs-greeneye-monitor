@@ -38,7 +38,11 @@ from .const import CONF_NET_METERING
 from .const import CONF_NUMBER
 from .const import CONF_PULSE_COUNTERS
 from .const import CONF_ENABLE_CURRENT
+from .const import CONF_ENERGY_UPDATE_INTERVAL
+from .const import CONF_MEASUREMENT_UPDATE_INTERVAL
 from .const import CONF_SEND_PACKET_DELAY
+from .const import DEFAULT_ENERGY_UPDATE_INTERVAL_SECONDS
+from .const import DEFAULT_MEASUREMENT_UPDATE_INTERVAL_SECONDS
 from .const import CONF_SERIAL_NUMBER
 from .const import CONF_TEMPERATURE_SENSORS
 from .const import CONF_TIME_UNIT
@@ -200,11 +204,24 @@ MONITOR_OPTIONS_SCHEMA = vol.Schema(
 MONITORS_OPTIONS_SCHEMA = vol.All(cv.ensure_list, [MONITOR_OPTIONS_SCHEMA])
 
 
-def make_global_options_schema(send_packet_delay: bool = False, enable_current: bool = True):
+def make_global_options_schema(
+    send_packet_delay: bool = False,
+    enable_current: bool = True,
+    energy_update_interval: int = DEFAULT_ENERGY_UPDATE_INTERVAL_SECONDS,
+    measurement_update_interval: int = DEFAULT_MEASUREMENT_UPDATE_INTERVAL_SECONDS,
+):
     return vol.Schema(
         {
             vol.Optional(CONF_SEND_PACKET_DELAY, default=send_packet_delay): bool,
             vol.Optional(CONF_ENABLE_CURRENT, default=enable_current): bool,
+            vol.Optional(CONF_ENERGY_UPDATE_INTERVAL, default=energy_update_interval):
+                selector.NumberSelector(selector.NumberSelectorConfig(
+                    min=60, max=3600, step=60, unit_of_measurement="seconds", mode=selector.NumberSelectorMode.BOX,
+                )),
+            vol.Optional(CONF_MEASUREMENT_UPDATE_INTERVAL, default=measurement_update_interval):
+                selector.NumberSelector(selector.NumberSelectorConfig(
+                    min=10, max=300, step=10, unit_of_measurement="seconds", mode=selector.NumberSelectorMode.BOX,
+                )),
         }
     )
 
@@ -492,6 +509,8 @@ class GreeneyeMonitorOptionsFlow(config_entries.OptionsFlow):
             options = deepcopy(dict(self.config_entry.options))
             options[CONF_SEND_PACKET_DELAY] = user_input[CONF_SEND_PACKET_DELAY]
             options[CONF_ENABLE_CURRENT] = user_input[CONF_ENABLE_CURRENT]
+            options[CONF_ENERGY_UPDATE_INTERVAL] = int(user_input[CONF_ENERGY_UPDATE_INTERVAL])
+            options[CONF_MEASUREMENT_UPDATE_INTERVAL] = int(user_input[CONF_MEASUREMENT_UPDATE_INTERVAL])
             return self.async_create_entry(title="", data=options)
 
         return self.async_show_form(
@@ -499,6 +518,8 @@ class GreeneyeMonitorOptionsFlow(config_entries.OptionsFlow):
             data_schema=make_global_options_schema(
                 send_packet_delay=self.config_entry.options[CONF_SEND_PACKET_DELAY],
                 enable_current=self.config_entry.options.get(CONF_ENABLE_CURRENT, True),
+                energy_update_interval=self.config_entry.options.get(CONF_ENERGY_UPDATE_INTERVAL, DEFAULT_ENERGY_UPDATE_INTERVAL_SECONDS),
+                measurement_update_interval=self.config_entry.options.get(CONF_MEASUREMENT_UPDATE_INTERVAL, DEFAULT_MEASUREMENT_UPDATE_INTERVAL_SECONDS),
             ),
         )
 

@@ -20,6 +20,8 @@ CONF_NET_METERING = "net_metering"
 CONF_NUMBER = "number"
 CONF_PULSE_COUNTERS = "pulse_counters"
 CONF_ENABLE_CURRENT = "enable_current"
+CONF_ENERGY_UPDATE_INTERVAL = "energy_update_interval"
+CONF_MEASUREMENT_UPDATE_INTERVAL = "measurement_update_interval"
 CONF_SEND_PACKET_DELAY = "send_packet_delay"
 CONF_SERIAL_NUMBER = "serial_number"
 CONF_TEMPERATURE_SENSORS = "temperature_sensors"
@@ -28,8 +30,8 @@ CONF_VOLTAGE_SENSORS = "voltage"
 
 CONFIG_ENTRY_TITLE = "GreenEye Monitor (GEM)"
 
-DEFAULT_UPDATE_INTERVAL = timedelta(minutes=5)
-MEASUREMENT_UPDATE_INTERVAL = timedelta(seconds=30)
+DEFAULT_ENERGY_UPDATE_INTERVAL_SECONDS = 300   # 5 minutes
+DEFAULT_MEASUREMENT_UPDATE_INTERVAL_SECONDS = 30
 DEVICE_TYPE_AUX = "aux"
 DEVICE_TYPE_CURRENT_TRANSFORMER = "channel"
 DEVICE_TYPE_PULSE_COUNTER = "pulse counter"
