@@ -257,6 +257,12 @@ class MonitorSensor(SensorEntity):
     _attr_should_poll = False
     _attr_suggested_display_precision = 2
 
+    # Subclasses set this to suppress writes when the value hasn't moved enough
+    # to be meaningful. Compared against the rounded native_value, so the
+    # threshold should match the rounding granularity (e.g. 0.3 for 1dp watts).
+    _significant_change_threshold: float | None = None
+    _last_written_value: float | None = None
+
     def __init__(
         self,
         monitor: greeneye.monitor.Monitor,
@@ -278,14 +284,24 @@ class MonitorSensor(SensorEntity):
         self._attr_unique_id = (
             f"{self._monitor_serial_number}-{self._sensor_type}-{self._number + 1}"
         )
-        mark_dirty = lambda: batcher.mark_dirty(self)
         if update_interval:
             # Accumulator sensors (energy, pulse count): throttle controls when
             # the write happens; batcher coalesces the resulting burst so all
             # ~80 energy entities that unlock at the same time flush together.
-            self._update = Throttle(update_interval)(mark_dirty)
+            self._update = Throttle(update_interval)(self._maybe_mark_dirty)
         else:
-            self._update = mark_dirty
+            self._update = self._maybe_mark_dirty
+
+    def _maybe_mark_dirty(self) -> None:
+        """Mark dirty only if the value has changed by at least the threshold."""
+        threshold = self._significant_change_threshold
+        if threshold is not None:
+            val = self.native_value
+            last = self._last_written_value
+            if last is not None and val is not None and abs(val - last) < threshold:
+                return
+            self._last_written_value = val
+        self._batcher.mark_dirty(self)
 
     @property
     def device_info(self) -> DeviceInfo | None:
@@ -334,6 +350,8 @@ class PowerSensor(MonitorSensor):
     _attr_device_class = SensorDeviceClass.POWER
     _attr_name = None
     _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 1
+    _significant_change_threshold = 0.3
 
     def __init__(
         self,
@@ -357,7 +375,7 @@ class PowerSensor(MonitorSensor):
     @property
     def native_value(self) -> float | None:
         """Return the current number of watts being used by the channel."""
-        return self._sensor.watts
+        return round(self._sensor.watts, 1) if self._sensor.watts is not None else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
@@ -371,6 +389,8 @@ class CurrentSensor(MonitorSensor):
     _attr_device_class = SensorDeviceClass.CURRENT
     _attr_name = "current"
     _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 2
+    _significant_change_threshold = 0.01
 
     def __init__(
         self,
@@ -386,8 +406,7 @@ class CurrentSensor(MonitorSensor):
 
     @property
     def native_value(self) -> float | None:
-        """Return the current number of watts being used by the channel."""
-        return self._sensor.amps
+        return round(self._sensor.amps, 2) if self._sensor.amps is not None else None
 
 
 class EnergySensor(MonitorSensor):
@@ -567,6 +586,8 @@ class VoltageSensor(MonitorSensor):
     _attr_native_unit_of_measurement = UnitOfElectricPotential.VOLT
     _attr_device_class = SensorDeviceClass.VOLTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 1
+    _significant_change_threshold = 0.1
 
     def __init__(self, monitor: greeneye.monitor.Monitor, batcher: GreenEyeStateBatcher) -> None:
         """Construct the entity."""
@@ -577,5 +598,4 @@ class VoltageSensor(MonitorSensor):
 
     @property
     def native_value(self) -> float | None:
-        """Return the current voltage being reported by this sensor."""
-        return self._sensor.voltage
+        return round(self._sensor.voltage, 1) if self._sensor.voltage is not None else None
