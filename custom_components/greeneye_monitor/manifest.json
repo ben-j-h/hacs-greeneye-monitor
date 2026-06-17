@@ -10,5 +10,5 @@
   "issue_tracker": "https://github.com/ben-j-h/hacs-greeneye-monitor/issues",
   "loggers": ["greeneye"],
   "requirements": ["greeneye_monitor==5.0.2"],
-  "version": "2026.6.11"
+  "version": "2026.6.17"
 }

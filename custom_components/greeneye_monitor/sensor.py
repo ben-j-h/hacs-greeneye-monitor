@@ -28,6 +28,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.issue_registry import IssueSeverity
 from homeassistant.util import Throttle
 
+from .batch import GreenEyeStateBatcher
+
 from .const import AUX5_TYPE_PULSE_COUNTER
 from .const import CONF_AUX5_TYPE
 from .const import CONF_ENABLE_CURRENT
@@ -41,9 +43,7 @@ from .const import CONF_PULSE_COUNTERS
 from .const import CONF_SERIAL_NUMBER
 from .const import CONF_TIME_UNIT
 from .const import CONF_ENERGY_UPDATE_INTERVAL
-from .const import CONF_MEASUREMENT_UPDATE_INTERVAL
 from .const import DEFAULT_ENERGY_UPDATE_INTERVAL_SECONDS
-from .const import DEFAULT_MEASUREMENT_UPDATE_INTERVAL_SECONDS
 from .const import DEVICE_TYPE_AUX
 from .const import DEVICE_TYPE_CURRENT_TRANSFORMER
 from .const import DEVICE_TYPE_PULSE_COUNTER
@@ -55,7 +55,6 @@ from .const import get_monitor_type_short_name
 from .const import make_device_info
 
 DATA_PULSES = "pulses"
-DATA_WATT_SECONDS = "watt_seconds"
 
 COUNTER_ICON = "mdi:counter"
 
@@ -69,6 +68,8 @@ async def async_setup_entry(
 ) -> bool:
     """Set up Brultech energy monitor sensors from the config entry"""
     entry_id = config_entry.entry_id
+    batcher = GreenEyeStateBatcher(hass)
+    config_entry.async_on_unload(batcher.cancel)
 
     async def on_new_monitor(monitor: greeneye.monitor.Monitor) -> None:
         config_entry = hass.config_entries.async_get_entry(entry_id)
@@ -110,34 +111,15 @@ async def async_setup_entry(
             energy_interval = timedelta(seconds=config_entry.options.get(
                 CONF_ENERGY_UPDATE_INTERVAL, DEFAULT_ENERGY_UPDATE_INTERVAL_SECONDS
             ))
-            measurement_interval = timedelta(seconds=config_entry.options.get(
-                CONF_MEASUREMENT_UPDATE_INTERVAL, DEFAULT_MEASUREMENT_UPDATE_INTERVAL_SECONDS
-            ))
             for channel in monitor.channels:
                 channel_net_metered = str(channel.number) in net_metering
                 entities.append(
-                    PowerSensor(
-                        monitor,
-                        channel,
-                        channel_net_metered,
-                        measurement_interval,
-                    )
+                    PowerSensor(monitor, channel, channel_net_metered, batcher)
                 )
                 if enable_current:
-                    entities.append(
-                        CurrentSensor(
-                            monitor,
-                            channel,
-                            measurement_interval,
-                        )
-                    )
+                    entities.append(CurrentSensor(monitor, channel, batcher))
                 entities.append(
-                    EnergySensor(
-                        monitor,
-                        channel,
-                        channel_net_metered,
-                        energy_interval,
-                    )
+                    EnergySensor(monitor, channel, channel_net_metered, batcher, energy_interval)
                 )
 
             pulse_counter_configs = monitor_config[CONF_PULSE_COUNTERS]
@@ -165,6 +147,7 @@ async def async_setup_entry(
                             config[CONF_COUNTED_QUANTITY],
                             options[CONF_TIME_UNIT],
                             config[CONF_COUNTED_QUANTITY_PER_PULSE],
+                            batcher,
                         )
                     )
                     entities.append(
@@ -174,6 +157,7 @@ async def async_setup_entry(
                             config[CONF_DEVICE_CLASS],
                             config[CONF_COUNTED_QUANTITY],
                             config[CONF_COUNTED_QUANTITY_PER_PULSE],
+                            batcher,
                             energy_interval,
                         )
                     )
@@ -182,15 +166,11 @@ async def async_setup_entry(
             for temperature_sensor in monitor.temperature_sensors:
                 if temperature_unit:
                     entities.append(
-                        TemperatureSensor(
-                            monitor,
-                            temperature_sensor,
-                            temperature_unit,
-                        )
+                        TemperatureSensor(monitor, temperature_sensor, temperature_unit, batcher)
                     )
 
             if monitor.voltage_sensor:
-                entities.append(VoltageSensor(monitor))
+                entities.append(VoltageSensor(monitor, batcher))
 
             for aux in monitor.aux:
                 channel = None
@@ -207,18 +187,10 @@ async def async_setup_entry(
                 if channel:
                     channel_net_metered = False
                     entities.append(
-                        PowerSensor(
-                            monitor,
-                            channel,
-                            channel_net_metered,
-                        )
+                        PowerSensor(monitor, channel, channel_net_metered, batcher)
                     )
                     entities.append(
-                        EnergySensor(
-                            monitor,
-                            channel,
-                            channel_net_metered,
-                        )
+                        EnergySensor(monitor, channel, channel_net_metered, batcher, energy_interval)
                     )
                 else:
                     assert pulse_counter
@@ -233,6 +205,7 @@ async def async_setup_entry(
                             config[CONF_COUNTED_QUANTITY],
                             options[CONF_TIME_UNIT],
                             config[CONF_COUNTED_QUANTITY_PER_PULSE],
+                            batcher,
                         )
                     )
                     entities.append(
@@ -242,6 +215,8 @@ async def async_setup_entry(
                             config[CONF_DEVICE_CLASS],
                             config[CONF_COUNTED_QUANTITY],
                             config[CONF_COUNTED_QUANTITY_PER_PULSE],
+                            batcher,
+                            energy_interval,
                         )
                     )
 
@@ -289,6 +264,7 @@ class MonitorSensor(SensorEntity):
         sensor_type: str,
         sensor: UnderlyingSensorType,
         number: int,
+        batcher: GreenEyeStateBatcher,
         update_interval: timedelta | None = None,
     ) -> None:
         """Construct the entity."""
@@ -298,13 +274,18 @@ class MonitorSensor(SensorEntity):
         self._sensor_type = sensor_type
         self._sensor: UnderlyingSensorType = sensor
         self._number = number
+        self._batcher = batcher
         self._attr_unique_id = (
             f"{self._monitor_serial_number}-{self._sensor_type}-{self._number + 1}"
         )
+        mark_dirty = lambda: batcher.mark_dirty(self)
         if update_interval:
-            self._update = Throttle(update_interval)(self.async_write_ha_state)
+            # Accumulator sensors (energy, pulse count): throttle controls when
+            # the write happens; batcher coalesces the resulting burst so all
+            # ~80 energy entities that unlock at the same time flush together.
+            self._update = Throttle(update_interval)(mark_dirty)
         else:
-            self._update = self.async_write_ha_state
+            self._update = mark_dirty
 
     @property
     def device_info(self) -> DeviceInfo | None:
@@ -324,6 +305,7 @@ class MonitorSensor(SensorEntity):
         """Remove listener from the sensor."""
         if self._sensor:
             self._sensor.remove_listener(self._update)
+        self._batcher.remove(self)
 
     def _warn_if_excluded_from_recorder(self) -> None:
         """Posts a warning if this sensor is excluded from the recorder."""
@@ -358,7 +340,7 @@ class PowerSensor(MonitorSensor):
         monitor: greeneye.monitor.Monitor,
         sensor: greeneye.monitor.Channel,
         net_metering: bool,
-        update_interval: timedelta | None = None,
+        batcher: GreenEyeStateBatcher,
     ) -> None:
         """Construct the entity."""
         super().__init__(
@@ -367,7 +349,7 @@ class PowerSensor(MonitorSensor):
             "current" if not sensor.is_aux else "aux_current",
             sensor,
             sensor.number,
-            update_interval=update_interval,
+            batcher,
         )
         self._sensor: greeneye.monitor.Channel = self._sensor
         self._net_metering = net_metering
@@ -379,12 +361,7 @@ class PowerSensor(MonitorSensor):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
-        """Return total wattseconds in the state dictionary."""
-        watt_seconds = self._sensor.watt_seconds
-        if self._net_metering and watt_seconds:
-            watt_seconds = abs(watt_seconds)
-
-        return {DATA_WATT_SECONDS: watt_seconds}
+        return None
 
 
 class CurrentSensor(MonitorSensor):
@@ -399,12 +376,11 @@ class CurrentSensor(MonitorSensor):
         self,
         monitor: greeneye.monitor.Monitor,
         sensor: greeneye.monitor.Channel,
-        update_interval: timedelta | None = None,
+        batcher: GreenEyeStateBatcher,
     ) -> None:
         """Construct the entity."""
         super().__init__(
-            monitor, DEVICE_TYPE_CURRENT_TRANSFORMER, "amps", sensor, sensor.number,
-            update_interval=update_interval,
+            monitor, DEVICE_TYPE_CURRENT_TRANSFORMER, "amps", sensor, sensor.number, batcher
         )
         self._sensor: greeneye.monitor.Channel = self._sensor
 
@@ -428,6 +404,7 @@ class EnergySensor(MonitorSensor):
         monitor: greeneye.monitor.Monitor,
         sensor: greeneye.monitor.Channel,
         net_metering: bool,
+        batcher: GreenEyeStateBatcher,
         update_interval: timedelta | None = None,
     ) -> None:
         """Construct the entity."""
@@ -437,6 +414,7 @@ class EnergySensor(MonitorSensor):
             "energy" if not sensor.is_aux else "aux_energy",
             sensor,
             sensor.number,
+            batcher,
             update_interval=update_interval,
         )
         self._sensor: greeneye.monitor.Channel = self._sensor
@@ -465,6 +443,7 @@ class PulseRateSensor(MonitorSensor):
         counted_quantity: str,
         time_unit: str,
         counted_quantity_per_pulse: float,
+        batcher: GreenEyeStateBatcher,
     ) -> None:
         """Construct the entity."""
         super().__init__(
@@ -473,6 +452,7 @@ class PulseRateSensor(MonitorSensor):
             "pulse" if not sensor.is_aux else "aux_pulse",
             sensor,
             sensor.number,
+            batcher,
         )
         self._sensor: greeneye.monitor.PulseCounter = self._sensor
         self._counted_quantity_per_pulse = counted_quantity_per_pulse
@@ -528,6 +508,7 @@ class PulseCountSensor(MonitorSensor):
         device_class: SensorDeviceClass | None,
         counted_quantity: str,
         counted_quantity_per_pulse: float,
+        batcher: GreenEyeStateBatcher,
         update_interval: timedelta | None = None,
     ) -> None:
         """Construct the entity."""
@@ -537,6 +518,7 @@ class PulseCountSensor(MonitorSensor):
             "count" if not sensor.is_aux else "aux_count",
             sensor,
             sensor.number,
+            batcher,
             update_interval=update_interval,
         )
         self._sensor: greeneye.monitor.PulseCounter = self._sensor
@@ -564,10 +546,11 @@ class TemperatureSensor(MonitorSensor):
         monitor: greeneye.monitor.Monitor,
         sensor: greeneye.monitor.TemperatureSensor,
         unit: str,
+        batcher: GreenEyeStateBatcher,
     ) -> None:
         """Construct the entity."""
         super().__init__(
-            monitor, DEVICE_TYPE_TEMPERATURE_SENSOR, "temp", sensor, sensor.number
+            monitor, DEVICE_TYPE_TEMPERATURE_SENSOR, "temp", sensor, sensor.number, batcher
         )
         self._sensor: greeneye.monitor.TemperatureSensor = self._sensor
         self._attr_native_unit_of_measurement = unit
@@ -585,10 +568,10 @@ class VoltageSensor(MonitorSensor):
     _attr_device_class = SensorDeviceClass.VOLTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
 
-    def __init__(self, monitor: greeneye.monitor.Monitor) -> None:
+    def __init__(self, monitor: greeneye.monitor.Monitor, batcher: GreenEyeStateBatcher) -> None:
         """Construct the entity."""
         super().__init__(
-            monitor, DEVICE_TYPE_VOLTAGE_SENSOR, "volts", monitor.voltage_sensor, 0
+            monitor, DEVICE_TYPE_VOLTAGE_SENSOR, "volts", monitor.voltage_sensor, 0, batcher
         )
         self._sensor: greeneye.monitor.VoltageSensor = self._sensor
 
