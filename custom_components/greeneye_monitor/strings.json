@@ -54,14 +54,12 @@
         "data": {
           "send_packet_delay": "Request packet delay for GEM API calls",
           "enable_current": "Enable current (amps) sensors",
-          "energy_update_interval": "Energy sensor update interval (seconds)",
-          "measurement_update_interval": "Power/current sensor update interval (seconds)"
+          "energy_update_interval": "Energy sensor update interval (seconds)"
         },
         "data_description": {
           "send_packet_delay": "Experimental. Leave it False unless a @jkeljo has told you to set it to True.",
           "enable_current": "Create per-channel current sensors. Disable to reduce state machine and recorder load.",
-          "energy_update_interval": "How often to update energy (kWh) and pulse-count sensors. 300 = 5 min, 1800 = 30 min.",
-          "measurement_update_interval": "How often to update power (W) and current (A) sensors. 30 = 30 s, 60 = 1 min."
+          "energy_update_interval": "How often to update energy (kWh) and pulse-count sensors. 300 = 5 min, 1800 = 30 min."
         }
       },
       "choose_monitor": {

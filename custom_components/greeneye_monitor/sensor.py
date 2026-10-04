@@ -257,11 +257,14 @@ class MonitorSensor(SensorEntity):
     _attr_should_poll = False
     _attr_suggested_display_precision = 2
 
-    # Subclasses set this to suppress writes when the value hasn't moved enough
-    # to be meaningful. Compared against the rounded native_value, so the
-    # threshold should match the rounding granularity (e.g. 0.3 for 1dp watts).
+    # Subclasses set this to hold the published value until the reading moves
+    # by at least this much (see _change_threshold). The entity still writes on
+    # every GEM packet: an unchanged state only refreshes last_reported (a
+    # state_reported event, which is neither recorded nor pushed to frontends),
+    # so freshness checks on last_reported keep working while sub-threshold
+    # noise generates no state_changed traffic.
     _significant_change_threshold: float | None = None
-    _last_written_value: float | None = None
+    _published_value: float | None = None
 
     def __init__(
         self,
@@ -292,15 +295,26 @@ class MonitorSensor(SensorEntity):
         else:
             self._update = self._maybe_mark_dirty
 
+    def _change_threshold(self, published: float) -> float | None:
+        """Return how far the reading must move from `published` to republish."""
+        return self._significant_change_threshold
+
+    def _raw_value(self) -> float | None:
+        """Return the live rounded reading. Overridden by held-value sensors."""
+        return None
+
     def _maybe_mark_dirty(self) -> None:
-        """Mark dirty only if the value has changed by at least the threshold."""
-        threshold = self._significant_change_threshold
-        if threshold is not None:
-            val = self.native_value
-            last = self._last_written_value
-            if last is not None and val is not None and abs(val - last) < threshold:
-                return
-            self._last_written_value = val
+        """Update the held value if the reading moved enough, then write."""
+        if self._significant_change_threshold is not None:
+            raw = self._raw_value()
+            last = self._published_value
+            if raw is None or last is None:
+                self._published_value = raw
+            else:
+                threshold = self._change_threshold(last)
+                # epsilon: rounded readings differ by e.g. 0.0999999 for a 0.1 step
+                if threshold is None or abs(raw - last) >= threshold - 1e-9:
+                    self._published_value = raw
         self._batcher.mark_dirty(self)
 
     @property
@@ -351,7 +365,13 @@ class PowerSensor(MonitorSensor):
     _attr_name = None
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 1
-    _significant_change_threshold = 0.3
+    # The GEM's ADC jitters by 0.3-1.0 W per packet on steady loads. Republish
+    # on a move of 2% of the load, but never less than 0.5 W (keeps sub-watt
+    # noise on small loads quiet) and never more than 5 W (a 5 W change always
+    # shows, however big the load).
+    _significant_change_threshold = 0.5
+    _change_pct = 0.02
+    _change_cap = 5.0
 
     def __init__(
         self,
@@ -372,10 +392,19 @@ class PowerSensor(MonitorSensor):
         self._sensor: greeneye.monitor.Channel = self._sensor
         self._net_metering = net_metering
 
+    def _change_threshold(self, published: float) -> float:
+        return min(
+            self._change_cap,
+            max(self._significant_change_threshold, self._change_pct * abs(published)),
+        )
+
+    def _raw_value(self) -> float | None:
+        return round(self._sensor.watts, 1) if self._sensor.watts is not None else None
+
     @property
     def native_value(self) -> float | None:
-        """Return the current number of watts being used by the channel."""
-        return round(self._sensor.watts, 1) if self._sensor.watts is not None else None
+        """Return the held number of watts being used by the channel."""
+        return self._published_value
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
@@ -404,9 +433,12 @@ class CurrentSensor(MonitorSensor):
         )
         self._sensor: greeneye.monitor.Channel = self._sensor
 
+    def _raw_value(self) -> float | None:
+        return round(self._sensor.amps, 2) if self._sensor.amps is not None else None
+
     @property
     def native_value(self) -> float | None:
-        return round(self._sensor.amps, 2) if self._sensor.amps is not None else None
+        return self._published_value
 
 
 class EnergySensor(MonitorSensor):
@@ -596,6 +628,9 @@ class VoltageSensor(MonitorSensor):
         )
         self._sensor: greeneye.monitor.VoltageSensor = self._sensor
 
+    def _raw_value(self) -> float | None:
+        return round(self._sensor.voltage, 1) if self._sensor.voltage is not None else None
+
     @property
     def native_value(self) -> float | None:
-        return round(self._sensor.voltage, 1) if self._sensor.voltage is not None else None
+        return self._published_value
